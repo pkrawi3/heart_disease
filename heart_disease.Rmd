@@ -1,0 +1,128 @@
+---
+title: "Analysis 02"
+author: "Peter Krawiec (pwk2)"
+date: "November 10, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, load-packages, include = FALSE}
+library(rsample)
+library(caret)
+library(MASS)
+library(SDMTools)
+library(tidyverse)
+library(e1071)
+library(kableExtra)
+```
+
+# Abstract
+Heart disease is the leading cause of death in both men and women. In the United States it accounts for 1 in every 4 deaths. This analysis is an attempt to predict heart disease occurrence based on a number of attributes. A relatively strong initial prediction accuracy from the methods tested in this analysis looks promising. 
+
+# Introduction
+This analysis explores a data set related to heart disease, and attempts to predict its occurrence using the features in the data set. Given that Heart Disease is so deadly and prevalent, the ability to predict it would most definitely be important and worthwhile since it gives potential to save lives. Although prediction would not eliminate the disease, it might help increase the odds of those with it surviving.
+
+# Methods
+The UCI heart-disease data set was used to attempt to predict the existence, and type, of heart disease. This data was split into a training and testing set, and further the training set was split into an estimation and validation set. The models were trained on the estimation set, and tested on the validation set. The best model was then trained on the entire training set and tested on the testing set. Random Forest models were applied using all attributes as features and the severity levels of heart disease were the response (0 being no disease, 1-4 being different levels of severity). This model was also trained with the response being binary, that is, whether there is an occurrence of heart disease or not, regardless of the severity. Two KNN models were also fit, on both the binary response and non-binary as well. The KNN and Random Forest Model were both cross-validated. Along with these, two SVM models were also fit on the data, once again on the binary and non-binary response. The models were compared on their accuracy.  
+
+```{r, echo = FALSE}
+## Get Data ##
+data = read.csv("https://fall-2019.stat432.org/analyses/data/heart-disease.csv")
+heart = as_tibble(data)
+
+# coerce character columns to factor
+heart = heart %>% 
+  mutate_if(is.character, as.factor)
+
+# create binary response variable
+heart$num_bin = factor(case_when(
+  heart$num == "v0" ~ "none",
+  TRUE ~ "some"
+))
+
+## Split Data ##
+# test/traing split
+heart_tst_trn = initial_split(heart, prop = 0.80)
+heart_trn = training(heart_tst_trn)
+heart_tst = testing(heart_tst_trn)
+
+# est/val split
+heart_est_val = initial_split(heart_trn, prop = 0.80)
+heart_est = training(heart_est_val)
+heart_val = testing(heart_est_val)
+
+## Model Data ##
+acc = numeric(6)
+
+# Random Forest on Non-Binary Response
+rf_model_mult = caret::train(num ~ . - num_bin, data = heart_est, method = "rf", trControl = trainControl(method = 'oob'))
+pred_rf_mult = predict(rf_model_mult, heart_val)
+acc[1] = confusionMatrix(pred_rf_mult, heart_val$num)$overall[1]
+
+# Random Forst on Binary Response
+rf_model_bin = caret::train(num_bin  ~ . - num, data = heart_est, method = "rf", trControl = trainControl(method = "oob"))
+pred_rf_bin = predict(rf_model_bin, heart_val)
+acc[2] = confusionMatrix(pred_rf_bin, heart_val$num_bin)$overall[1]
+
+# KNN on Non-Binary Response
+knn_model_mult = caret::train(num ~ . - num_bin, data = heart_est, method = "knn", trControl = trainControl(method = 'cv', number = 5))
+pred_knn_mult = predict(knn_model_mult, heart_val)
+acc[3] = confusionMatrix(pred_knn_mult, heart_val$num)$overall[1]
+
+# KNN on Binary Response
+knn_model_bin = caret::train(num_bin ~ . - num, data = heart_est, method = "knn", trControl = trainControl(method = 'cv', number = 5))
+pred_knn_bin = predict(knn_model_bin, heart_val)
+acc[4] = confusionMatrix(pred_knn_bin, heart_val$num_bin)$overall[1]
+
+# SVM for Non-Binary 
+svm_model_mult = svm(num ~ . - num_bin, data = heart_est)
+pred_svm_mult = predict(svm_model_mult, heart_val)
+acc[5] = confusionMatrix(pred_svm_mult, heart_val$num)$overall[1]
+
+# SVM for Binary
+svm_model_bin = svm(num_bin ~ . - num, data = heart_est)
+pred_svm_bin = predict(svm_model_bin, heart_val)
+acc[6] = confusionMatrix(pred_svm_bin, heart_val$num_bin)$overall[1]
+
+# Table of Results
+table = tibble("Models" = c("Random Forest Mult", "Random Forest Bin", "KNN Mult", "KNN Bin", "SVM Mult", "SVM Bin"),
+                       "Accuracies" = acc)
+display = kable(table, format = "html") 
+kable_styling(display, bootstrap_options = "striped", full_width = FALSE)
+
+# Final Model Testing
+svm_model_bin_tst = svm(num_bin ~ . - num, data = heart_trn)
+pred_svm_bin_tst = predict(svm_model_bin_tst, heart_tst)
+test_acc = confusionMatrix(pred_svm_bin_tst, heart_tst$num_bin)$overall[1]
+```
+
+# Results
+We see from the table of the ac curacies from the models, that when trained on the estimation set and tested on the validation set the highest accuracy was the SVM on the binary response, this was followed closely by the Random Forest on the binary response. We see that the accuracies greatly differ, unsurprisingly, between the non-binary and binary response trained models. The binary response SVM model was then trained on the whole training set and tested on the testing set, with an accuracy was observed of 0.7959, which is remarkably close to the validation set's accuracy.
+
+# Discussion
+From the models ac curacies, we found some promising results, at least for the binary response trained ones. Intuitively, it makes sense that this accuracy is high since there are only two possible options that need to be trained for instead of 5. Although, this makes the prediction less informative, I would argue that the gain in accuracy of prediction heavily outweighs the loss in information. Although the severity of the heart disease is unknown from the binary response, heart disease regardless of its severity is important to know about. An accuracy of close to 80% is very promising, however, for it to be useful I would argue that a higher accuracy would be required. More validation also need to be done on the modeling. Further investigation into data, as well as possibly incorporating other predictors, which would require a different data set would be beneficial.  
+
+# Appendix
+
+### Link to Data
+https://fall-2019.stat432.org/analyses/data/heart-disease.csv
+
+### Data Dictionary
+1. (age) age in years
+2. (sex) sex (1 = male; 0 = female)
+3. (cp) chest pain type
+4. (trestbps) resting blood pressure
+5. (chol) serum cholestoral in mg/dl
+6. (fbs) (fasting blood sugar > 120 mg/dl) (1 = true; 0 = false)
+7. (restecg) resting electrocardiographic results
+8. (thalach) maximum heart rate achieved
+9. (exang) exercise induced angina (1 = yes; 0 = no)
+10. (oldpeak) ST depression induced by exercise relative to rest
+11. (slope) the slope of the peak exercise ST segment
+12. (ca) number of major vessels (0-3) colored by flourosopy
+13. (thal) 3 = normal; 6 = fixed defect; 7 = reversable defect
+14. (num) (the predicted attribute) diagnosis of heart disease 
+
